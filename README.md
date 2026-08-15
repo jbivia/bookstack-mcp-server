@@ -280,3 +280,7 @@ Le skill `mcp-builder` prévoit une phase d'évaluation : 10 questions complexes
 en lecture seule, avec réponses vérifiables, exécutées contre le serveur. Elle
 demande d'explorer le contenu réel du wiki, ce qui n'est possible qu'une fois le
 serveur branché sur une instance joignable.
+
+## Licence
+
+[MIT](LICENSE).

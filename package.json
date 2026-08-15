@@ -2,6 +2,11 @@
   "name": "bookstack-mcp-server",
   "version": "1.0.0",
   "description": "MCP server for a self-hosted BookStack wiki (read + page authoring)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jbivia/bookstack-mcp-server.git"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
