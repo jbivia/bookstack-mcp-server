@@ -1,0 +1,33 @@
+{
+  "name": "bookstack-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for a self-hosted BookStack wiki (read + page authoring)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "bookstack-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "node --env-file-if-exists=.env dist/index.js --check",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist",
+    "inspect": "npx -y @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}
