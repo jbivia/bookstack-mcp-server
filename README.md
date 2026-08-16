@@ -25,6 +25,7 @@ dédié avec un rôle restreint si tu veux limiter la surface.
 ## 2. Installer
 
 ```bash
+git clone https://github.com/jbivia/bookstack-mcp-server.git
 cd bookstack-mcp-server
 nvm use          # lit .nvmrc -> Node 24
 npm install
@@ -60,7 +61,14 @@ nativement, sans dépendance `dotenv`) :
 npm run check
 ```
 
-Sortie attendue : `Connection OK. 12 book(s) visible to this token.`
+Sortie attendue :
+
+```
+Endpoint: https://wiki.example.com/api
+Connection OK. 12 book(s) visible to this token.
+```
+
+`node dist/index.js --help` rappelle les flags et les variables attendues.
 
 Si le wiki utilise une CA privée, pointe `NODE_EXTRA_CA_CERTS` sur le certificat
 racine plutôt que de désactiver la vérification TLS.
@@ -153,21 +161,15 @@ les ids nommés, et seul `"replace"` reproduit le comportement brut de l'API. La
 réponse détaille `previous_book_ids`, `added` et `removed` pour que le résultat
 soit vérifiable.
 
-### Markdown vs WYSIWYG
-
-BookStack stocke une page soit en markdown (avec le HTML rendu à côté), soit en
-HTML seul si elle a été écrite dans l'éditeur WYSIWYG. L'`append` de markdown sur
-une page HTML est impossible sans perte : le serveur renvoie alors une erreur
-explicite qui indique de renvoyer le contenu en HTML. Les pages créées par ce
-serveur sont toujours en markdown, donc le cas ne se pose que sur des pages
-écrites à la main dans l'interface.
-
 ### Markdown attendu, pas d'images
 
 Le format attendu pour le contenu de ce wiki est le **markdown**. L'argument
 `html` des outils d'écriture n'existe que pour les pages déjà rédigées dans
-l'éditeur WYSIWYG, qui n'ont pas de source markdown : une nouvelle page se crée
-toujours en markdown.
+l'éditeur WYSIWYG, qui n'ont pas de source markdown : BookStack stocke alors la
+page en HTML seul, et l'`append` de markdown dessus est impossible sans perte —
+le serveur renvoie une erreur explicite qui indique de renvoyer le contenu en
+HTML. Les pages créées ici étant toujours en markdown, le cas ne se pose que sur
+des pages écrites à la main dans l'interface.
 
 **Aucune image ne peut être envoyée.** Ce serveur n'expose pas la galerie
 d'images de l'API BookStack, et un agent n'a de toute façon pas de fichier à
@@ -176,11 +178,13 @@ en **ASCII dans un bloc de code**. C'est lisible, cherchable, diffable, et ça
 survit à un export.
 
 Le serveur refuse le contenu dont une image ne peut pas s'afficher : chemin
-relatif (`./schema.png`), URI `data:`, `file://`, chemin Windows. L'erreur nomme
-les sources fautives et rappelle l'alternative ASCII. Une URL absolue en
-`http(s)` ou un chemin racine-relatif (`/uploads/...`) sont laissés passer : ils
-peuvent résoudre. Les images citées **dans un bloc de code** ou entre backticks
-sont ignorées — c'est un exemple, pas un lien mort.
+relatif (`./schema.png`), URI `data:`, `file://`, chemin Windows, et chemin de
+fichier absolu (`/home/...`, `/tmp/...`, qui ressemblent à une URL racine-relative
+sans en être une). L'erreur nomme les sources fautives et rappelle l'alternative
+ASCII. Une URL absolue en `http(s)` ou un vrai chemin racine-relatif du wiki
+(`/uploads/...`) sont laissés passer : ils peuvent résoudre. Les images citées
+**dans un bloc de code** ou entre backticks sont ignorées — c'est un exemple, pas
+un lien mort.
 
 ### Pas de titre en double
 
@@ -273,13 +277,6 @@ du 2020-12 nativement.
   changes d'avis (`POST /api/shelves`, même corps que l'update).
 - Suppression via la corbeille (`/api/recycle-bin`) si tu changes d'avis, avec
   `destructiveHint: true`.
-
-## Évaluations
-
-Le skill `mcp-builder` prévoit une phase d'évaluation : 10 questions complexes,
-en lecture seule, avec réponses vérifiables, exécutées contre le serveur. Elle
-demande d'explorer le contenu réel du wiki, ce qui n'est possible qu'une fois le
-serveur branché sur une instance joignable.
 
 ## Licence
 
