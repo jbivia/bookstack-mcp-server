@@ -15,6 +15,7 @@ import { apiRequest } from "../services/client.js";
 import { fetchList } from "../services/list.js";
 import {
   summarizeDescribed,
+  summarizeDescribedBrief,
   renderDescribedCollection,
   renderSummary,
 } from "../services/entities.js";
@@ -147,7 +148,7 @@ Examples:
         const base = paginate(
           envelope.total,
           args.offset,
-          envelope.data.map((shelf) => summarizeDescribed(shelf, "shelves")),
+          envelope.data.map((shelf) => summarizeDescribedBrief(shelf, "shelves")),
         );
         const { text, payload } = capListing(base, (current) =>
           renderDescribedCollection("Shelves", current),

@@ -12,6 +12,7 @@ import { fetchList } from "../services/list.js";
 import { rememberBookSlug } from "../services/links.js";
 import {
   summarizeDescribed,
+  summarizeDescribedBrief,
   renderDescribedCollection,
   renderSummary,
 } from "../services/entities.js";
@@ -184,7 +185,7 @@ Examples:
         const base = paginate(
           envelope.total,
           args.offset,
-          envelope.data.map((book) => summarizeDescribed(book, "books")),
+          envelope.data.map((book) => summarizeDescribedBrief(book, "books")),
         );
         const { text, payload } = capListing(base, (current) => renderDescribedCollection("Books", current));
 

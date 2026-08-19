@@ -233,6 +233,11 @@ Points de conception notables :
   sont pas partagés entre types, 422 → champ manquant).
 - **Limite de contexte** : les réponses sont plafonnées à 25 000 caractères, avec
   troncature progressive des listes et un message indiquant l'`offset` à utiliser.
+  Dans un *listing*, la description d'un item est en plus écourtée à 300
+  caractères et suffixée d'un `…`. Les lectures unitaires et les écritures
+  (`get_book`, `get_shelf`, `update_book`…) renvoient toujours la description
+  entière : un agent vérifie son écriture en la relisant, et un écho
+  silencieusement raccourci se lirait comme une perte de données dans le wiki.
 - **Double format** : chaque outil de lecture accepte `response_format` en
   `markdown` (compact, par défaut) ou `json` (payload complet).
 - **URL de page** : l'API ne renvoie que `book_id` sur une page, alors qu'une URL
