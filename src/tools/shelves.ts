@@ -82,7 +82,7 @@ const updateShelfShape = {
         "exactly these, detaching everything else. Prefer add unless you mean to reset the shelf.",
     ),
   name: z.string().min(1).max(255).optional().describe("New shelf name. Omit to keep the current one."),
-  description: z.string().max(2000).optional().describe("New description. Omit to keep the current one."),
+  description: z.string().max(1900).optional().describe("New description. Omit to keep the current one."),
   tags: tagsField,
 };
 type UpdateShelfArgs = z.infer<z.ZodObject<typeof updateShelfShape>>;

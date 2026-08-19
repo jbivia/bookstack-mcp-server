@@ -3,8 +3,9 @@
  * MCP server for a self-hosted BookStack wiki.
  *
  * Exposes read tools (search, browse, read pages) and authoring tools (create
- * books, chapters and pages; append to or rewrite existing pages). Deletion is
- * deliberately not implemented: removing wiki content stays a human action.
+ * books, chapters and pages; rename or re-describe a book; append to or rewrite
+ * existing pages). Deletion is deliberately not implemented: removing wiki
+ * content stays a human action.
  *
  * Transport: stdio. Nothing may be written to stdout except protocol traffic,
  * so all logging goes to stderr.

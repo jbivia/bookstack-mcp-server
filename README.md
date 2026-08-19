@@ -136,6 +136,7 @@ npm run inspect
 | `bookstack_create_book` | oui | Créer un book |
 | `bookstack_create_chapter` | oui | Créer un chapitre |
 | `bookstack_create_page` | oui | Créer une page |
+| `bookstack_update_book` | oui | Renommer un book, changer sa description ou ses tags |
 | `bookstack_update_page` | oui | Ajouter à / réécrire une page (`append` par défaut) |
 | `bookstack_update_shelf` | oui | Rattacher/détacher des books, renommer (`add` par défaut) |
 | `bookstack_save_note` | oui | **Workflow** : capturer une note en un appel, par nom |
@@ -238,8 +239,9 @@ Points de conception notables :
   s'écrit `/books/{slug-du-book}/page/{slug-de-la-page}`. Le serveur résout le
   slug du book et le met en cache 10 minutes (TTL court : un book renommé change
   de slug, et un lien mort est pire qu'un appel de plus). Les lectures et
-  créations de book alimentent ce cache gratuitement, donc la résolution est le
-  plus souvent sans coût. Elle est appliquée aux opérations mono-page seulement :
+  créations de book alimentent ce cache gratuitement, et `bookstack_update_book`
+  le rafraîchit après un renommage, donc la résolution est le plus souvent sans
+  coût et jamais périmée par nos propres écritures. Elle est appliquée aux opérations mono-page seulement :
   sur un listing, des pages réparties sur de nombreux books déclencheraient
   autant de requêtes. Tout échec de résolution est avalé — une URL est un
   confort, elle ne doit jamais faire échouer une écriture réussie.
