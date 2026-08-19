@@ -78,7 +78,20 @@ export interface DescribedSummary extends EntitySummary {
   description?: string;
 }
 
-/** Summarize an entity that carries a free-text description. */
+/**
+ * Longest description echoed inside a listing, where many items compete for the
+ * context budget. Single items are not clipped: see summarizeDescribedBrief.
+ */
+const LISTING_DESCRIPTION_LIMIT = 300;
+
+/**
+ * Summarize an entity that carries a free-text description.
+ *
+ * The description is returned whole. That matters on single-entity reads and on
+ * writes: an agent checks its own write by reading the value back, so a
+ * silently shortened echo reads as data loss in the wiki and invites a
+ * "repair" that overwrites a description which was never damaged.
+ */
 export function summarizeDescribed(
   entity: RawEntity & { description?: string },
   fallbackPath?: string,
@@ -86,8 +99,22 @@ export function summarizeDescribed(
   const description = entity.description?.trim();
   return {
     ...summarize(entity, fallbackPath),
-    ...(description ? { description: description.slice(0, 300) } : {}),
+    ...(description ? { description } : {}),
   };
+}
+
+/**
+ * Same, with the description clipped for listings only. The ellipsis is the
+ * point: a clipped value must never be mistakable for the stored one.
+ */
+export function summarizeDescribedBrief(
+  entity: RawEntity & { description?: string },
+  fallbackPath?: string,
+): DescribedSummary {
+  const summary = summarizeDescribed(entity, fallbackPath);
+  const description = summary.description;
+  if (!description || description.length <= LISTING_DESCRIPTION_LIMIT) return summary;
+  return { ...summary, description: `${description.slice(0, LISTING_DESCRIPTION_LIMIT)}…` };
 }
 
 /** Render a paginated list of described entities as markdown. */
