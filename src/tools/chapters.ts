@@ -76,7 +76,7 @@ type ListChaptersArgs = z.infer<z.ZodObject<typeof listChaptersShape>>;
 const createChapterShape = {
   book_id: z.number().int().positive().describe("Id of the book that will contain the chapter."),
   name: z.string().min(1, "Name is required").max(255).describe("Title of the new chapter."),
-  description: z.string().max(2000).optional().describe("Optional plain-text description."),
+  description: z.string().max(1900).optional().describe("Optional plain-text description."),
   tags: tagsField,
 };
 type CreateChapterArgs = z.infer<z.ZodObject<typeof createChapterShape>>;

@@ -82,12 +82,38 @@ const createBookShape = {
   name: z.string().min(1, "Name is required").max(255).describe("Title of the new book."),
   description: z
     .string()
-    .max(2000)
+    .max(1900)
     .optional()
     .describe("Plain-text description shown on the book's cover."),
   tags: tagsField,
 };
 type CreateBookArgs = z.infer<z.ZodObject<typeof createBookShape>>;
+
+/* -------------------------------------------------------------------------- */
+/* bookstack_update_book                                                       */
+/* -------------------------------------------------------------------------- */
+
+const updateBookShape = {
+  book_id: z.number().int().positive().describe("Id of the book to update."),
+  name: z
+    .string()
+    .min(1)
+    .max(255)
+    .optional()
+    .describe("New title. Omit to keep the current one. A rename also changes the book's slug."),
+  // BookStack validates the plain-text description at max:1900; the 2000 bound
+  // belongs to description_html, which this server does not expose.
+  description: z
+    .string()
+    .max(1900)
+    .optional()
+    .describe(
+      "New plain-text description, replacing the current one. Omit to leave it alone; " +
+        "pass an empty string to clear it.",
+    ),
+  tags: tagsField,
+};
+type UpdateBookArgs = z.infer<z.ZodObject<typeof updateBookShape>>;
 
 /* -------------------------------------------------------------------------- */
 /* Registration                                                                */
@@ -301,6 +327,102 @@ Error handling:
           `Created book "${summary.name}" (book_id: ${summary.id}).\n` +
             `Add content with bookstack_create_page using book_id=${summary.id}.`,
           summary,
+        );
+      } catch (error) {
+        return toolFailure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "bookstack_update_book",
+    {
+      title: "Update a BookStack book",
+      description: `Change a book's name, description or tags.
+
+Metadata only: this never touches the chapters and pages inside the book. Each field is a whole-value replacement — the description you send replaces the previous one, and sending tags replaces the entire tag set, so read the book first with bookstack_get_book when you mean to keep what is already there. Renaming a book changes its slug, and therefore its URL and the URL of every page it holds.
+
+Args:
+  - book_id (number): id of the book to update
+  - name (string): optional new title, 1-255 characters
+  - description (string): optional new description, up to 1900 characters; an empty string clears it
+  - tags (array): optional replacement tag set [{ "name": string, "value": string }]; omit to leave tags untouched
+
+Returns (json format):
+  {
+    "id": number, "name": string, "slug": string, "description": string,
+    "created_at": string, "updated_at": string, "tags": string, "url": string,
+    "changed": string[]   // what this call changed, e.g. ["renamed", "tags replaced"]
+  }
+
+Examples:
+  - Use when: "rename book 4 to Homelab" -> book_id=4, name="Homelab"
+  - Use when: "say on the cover what the Infrastructure book covers" -> book_id=4, description="..."
+  - Use when: tagging a book for later retrieval -> tags=[{"name":"owner","value":"ops"}]
+  - Don't use when: changing the text of a page (use bookstack_update_page)
+  - Don't use when: attaching the book to a shelf (use bookstack_update_shelf)
+  - Don't use when: no book fits yet and you need a new one (use bookstack_create_book)
+
+Error handling:
+  - Returns an error when nothing was supplied to change.
+  - A 404 means no book carries that id. Book ids and page ids are separate sequences;
+    confirm with bookstack_list_books.
+  - A 422 usually means the description exceeded 1900 characters, or the name was empty.`,
+      inputSchema: updateBookShape,
+      outputSchema: {
+        ...describedSummaryShape,
+        changed: z
+          .array(z.string())
+          .describe("What this call changed, e.g. ['renamed', 'tags replaced']."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args: UpdateBookArgs) => {
+      try {
+        if (args.name === undefined && args.description === undefined && args.tags === undefined) {
+          return toolFailure(
+            new Error("Nothing to update. Provide a new name, description or tags array."),
+          );
+        }
+
+        const body: Record<string, unknown> = {};
+        if (args.name !== undefined) body["name"] = args.name;
+        if (args.description !== undefined) body["description"] = args.description;
+        if (args.tags !== undefined) body["tags"] = args.tags;
+
+        const updated = await apiRequest<BookStackBook>(`/books/${args.book_id}`, {
+          method: "PUT",
+          body,
+        });
+
+        // Unlike a shelf update, this response carries every field the tool can
+        // change, so nothing needs re-reading. It also carries the refreshed
+        // slug: seeding the cache here is what keeps page URLs alive after a
+        // rename, since resolveBookSlug would otherwise serve the old slug for
+        // the rest of its TTL.
+        rememberBookSlug(updated.id, updated.slug);
+        const summary = summarizeDescribed(updated, "books");
+
+        // Never empty: the guard above rejects a call that changes nothing.
+        const changed: string[] = [];
+        if (args.name !== undefined) changed.push("renamed");
+        if (args.description !== undefined) {
+          changed.push(args.description === "" ? "description cleared" : "description updated");
+        }
+        if (args.tags !== undefined) {
+          changed.push(args.tags.length === 0 ? "tags cleared" : "tags replaced");
+        }
+
+        return toolSuccess(
+          `Updated book "${summary.name}" (book_id: ${summary.id}): ${changed.join(", ")}.` +
+            `${args.name !== undefined ? "\nThe rename changed the book's slug, so URLs noted earlier for this book or its pages are stale." : ""}` +
+            `${summary.url ? `\nURL: ${summary.url}` : ""}`,
+          { ...summary, changed },
         );
       } catch (error) {
         return toolFailure(error);
