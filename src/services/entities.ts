@@ -7,7 +7,7 @@
 import { formatDate, formatTags, line, lines, paginationFooter } from "./format.js";
 import type { Paginated } from "./format.js";
 import { webLink } from "./client.js";
-import type { BookStackTag } from "../types.js";
+import type { BookStackBookContentItem, BookStackTag } from "../types.js";
 
 export interface EntitySummary {
   id: number;
@@ -128,4 +128,33 @@ export function renderDescribedCollection(
     renderSummary(item, "##", [line("Description", item.description), ...extra(item)]),
   );
   return `${header}\n${blocks.join("\n\n")}${paginationFooter(payload)}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Book contents tree                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Flatten the `contents` tree of a book into an indented markdown outline.
+ *
+ * Lives here rather than beside the book tools because the book resource
+ * renders the same outline, and a resource module must not import from a tool
+ * module.
+ */
+export function renderContents(contents: BookStackBookContentItem[] | undefined): string {
+  if (!contents || contents.length === 0) {
+    return "_This book is empty. Create the first page with bookstack_create_page._";
+  }
+  const out: string[] = [];
+  for (const item of contents) {
+    if (item.type === "chapter") {
+      out.push(`- **Chapter** "${item.name}" (chapter_id: ${item.id})`);
+      for (const page of item.pages ?? []) {
+        out.push(`  - Page "${page.name}" (page_id: ${page.id})${page.draft ? " _[draft]_" : ""}`);
+      }
+    } else {
+      out.push(`- Page "${item.name}" (page_id: ${item.id})${item.draft ? " _[draft]_" : ""}`);
+    }
+  }
+  return out.join("\n");
 }

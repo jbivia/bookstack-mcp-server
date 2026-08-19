@@ -4,8 +4,9 @@
  *
  * Exposes read tools (search, browse, read pages) and authoring tools (create
  * books, chapters and pages; rename or re-describe a book; append to or rewrite
- * existing pages). Deletion is deliberately not implemented: removing wiki
- * content stays a human action.
+ * existing pages), plus books as resources for URI access without a tool call.
+ * Deletion is deliberately not implemented: removing wiki content stays a human
+ * action.
  *
  * Transport: stdio. Nothing may be written to stdout except protocol traffic,
  * so all logging goes to stderr.
@@ -23,6 +24,7 @@ import {
 } from "./constants.js";
 import { apiRequest, formatError, loadConfig } from "./services/client.js";
 import { patchTransportSchemaDialect } from "./services/compat.js";
+import { registerBookResources } from "./resources/books.js";
 import { registerBookTools } from "./tools/books.js";
 import { registerChapterTools } from "./tools/chapters.js";
 import { registerNoteTools } from "./tools/notes.js";
@@ -39,6 +41,7 @@ function buildServer(): McpServer {
   registerChapterTools(server);
   registerPageTools(server);
   registerNoteTools(server);
+  registerBookResources(server);
   return server;
 }
 

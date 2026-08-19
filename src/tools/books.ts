@@ -13,6 +13,7 @@ import { rememberBookSlug } from "../services/links.js";
 import {
   summarizeDescribed,
   summarizeDescribedBrief,
+  renderContents,
   renderDescribedCollection,
   renderSummary,
 } from "../services/entities.js";
@@ -25,30 +26,7 @@ import {
   sortField,
   tagsField,
 } from "../schemas/common.js";
-import type { BookStackBook, BookStackBookContentItem } from "../types.js";
-
-/* -------------------------------------------------------------------------- */
-/* Shared rendering                                                            */
-/* -------------------------------------------------------------------------- */
-
-/** Flatten the `contents` tree of a book into an indented markdown outline. */
-function renderContents(contents: BookStackBookContentItem[] | undefined): string {
-  if (!contents || contents.length === 0) {
-    return "_This book is empty. Create the first page with bookstack_create_page._";
-  }
-  const out: string[] = [];
-  for (const item of contents) {
-    if (item.type === "chapter") {
-      out.push(`- **Chapter** "${item.name}" (chapter_id: ${item.id})`);
-      for (const page of item.pages ?? []) {
-        out.push(`  - Page "${page.name}" (page_id: ${page.id})${page.draft ? " _[draft]_" : ""}`);
-      }
-    } else {
-      out.push(`- Page "${item.name}" (page_id: ${item.id})${item.draft ? " _[draft]_" : ""}`);
-    }
-  }
-  return out.join("\n");
-}
+import type { BookStackBook } from "../types.js";
 
 /* -------------------------------------------------------------------------- */
 /* bookstack_list_books                                                        */
