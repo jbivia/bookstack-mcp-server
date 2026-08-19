@@ -102,11 +102,20 @@ export function capListing<T>(
   return { text, payload: capped };
 }
 
-/** Enforce CHARACTER_LIMIT on a single long body of text (e.g. page content). */
-export function capText(text: string, note: string): { text: string; truncated: boolean } {
-  if (text.length <= CHARACTER_LIMIT) return { text, truncated: false };
+/**
+ * Enforce a character ceiling on a single long body of text (e.g. page content).
+ *
+ * @param limit Ceiling to apply. Defaults to CHARACTER_LIMIT; resource reads
+ * pass RESOURCE_CHARACTER_LIMIT instead.
+ */
+export function capText(
+  text: string,
+  note: string,
+  limit: number = CHARACTER_LIMIT,
+): { text: string; truncated: boolean } {
+  if (text.length <= limit) return { text, truncated: false };
   return {
-    text: `${text.slice(0, CHARACTER_LIMIT)}\n\n[... truncated at ${CHARACTER_LIMIT} characters. ${note}]`,
+    text: `${text.slice(0, limit)}\n\n[... truncated at ${limit} characters. ${note}]`,
     truncated: true,
   };
 }

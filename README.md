@@ -206,11 +206,38 @@ pour que l'agent cesse de l'émettre.
 
 ---
 
+## Resources exposées
+
+En plus des outils, chaque book est accessible **par URI**, sans appel d'outil.
+Dans Claude Code, tape `@bookstack:` : les books apparaissent dans
+l'autocomplétion et s'attachent comme un fichier.
+
+| URI | Contenu | Listée ? |
+|---|---|---|
+| `bookstack://book/{book_id}` | Métadonnées + arborescence chapitres/pages, en markdown. Identique à `bookstack_get_book` | oui |
+| `bookstack://book/{book_id}/content` | Le book entier en markdown, via `/api/books/{id}/export/markdown` | non |
+
+```
+@bookstack:bookstack://book/9            le plan du book 9
+@bookstack:bookstack://book/9/content    tout son texte
+```
+
+La seconde URI n'est **pas listée** : elle reste découvrable via
+`resources/templates/list`, mais aucun client ne la propose spontanément à côté
+des autres. Sa description dit à l'agent de ne pas la lire de sa propre
+initiative — un book de taille moyenne pèse plusieurs dizaines de milliers de
+caractères, et rien ne justifie de les faire entrer dans le contexte tant que
+l'utilisateur n'a pas demandé le texte entier. Le plan suffit à trouver les
+`page_id` à lire ensuite avec `bookstack_get_page`.
+
+Tous les clients MCP ne gèrent pas les resources. Ceux qui ne les gèrent pas
+ignorent simplement la capability : les outils continuent de fonctionner.
+
 ## Architecture
 
 ```
 src/
-├── index.ts              # enregistrement des outils, transport stdio, mode --check
+├── index.ts              # enregistrement outils + resources, transport stdio, mode --check
 ├── constants.ts          # limites, timeouts, noms de variables d'env
 ├── types.ts              # interfaces des entités BookStack
 ├── schemas/common.ts     # fragments Zod partagés (pagination, tags, format)
@@ -223,6 +250,7 @@ src/
 │   ├── title.ts          # retrait du H1 de corps qui redouble le titre de page
 │   ├── authoring.ts      # conventions d'écriture : markdown, pas d'images (ASCII à la place)
 │   └── format.ts         # pagination, rendu markdown, troncature
+├── resources/books.ts    # books exposés en resources MCP (plan + export markdown)
 └── tools/                # un fichier par domaine
 ```
 
@@ -238,8 +266,25 @@ Points de conception notables :
   (`get_book`, `get_shelf`, `update_book`…) renvoient toujours la description
   entière : un agent vérifie son écriture en la relisant, et un écho
   silencieusement raccourci se lirait comme une perte de données dans le wiki.
+  Les lectures de resources ont leur propre plafond, à 100 000 : une resource
+  arrive dans le contexte parce que quelqu'un l'a attachée ou demandée, un
+  résultat d'outil parce que l'agent en a décidé ainsi. Le lecteur d'une
+  resource a déjà accepté le coût, et couper un book au milieu d'une phrase ne
+  rendrait service à personne.
 - **Double format** : chaque outil de lecture accepte `response_format` en
   `markdown` (compact, par défaut) ou `json` (payload complet).
+- **Listing de resources non paginé** : le SDK appelle le callback `list` sans
+  curseur et jette le `nextCursor` qu'on lui renvoie
+  (`server/mcp.js`, handler `resources/list`). Le listing est donc
+  tout-ou-rien : il est plafonné à 100 books, triés par date de mise à jour
+  décroissante pour que la coupe tombe sur les moins susceptibles d'être
+  cherchés.
+- **Erreurs de resource** : une resource n'a pas d'équivalent du champ `isError`
+  des outils — une lecture renvoie du contenu ou lève. Les erreurs sont donc
+  converties en erreur JSON-RPC en conservant le message actionnable de
+  `client.ts`, et sans passer par le `McpError` du SDK, dont le constructeur
+  préfixe le message d'un `MCP error <code>:` que le client réaffiche ensuite en
+  double.
 - **URL de page** : l'API ne renvoie que `book_id` sur une page, alors qu'une URL
   s'écrit `/books/{slug-du-book}/page/{slug-de-la-page}`. Le serveur résout le
   slug du book et le met en cache 10 minutes (TTL court : un book renommé change
@@ -277,8 +322,6 @@ du 2020-12 nativement.
 - Attachments et image gallery (`/api/attachments`, `/api/image-gallery`) pour
   joindre des fichiers aux pages.
 - Export d'un book entier en markdown (`/api/books/{id}/export/markdown`).
-- Exposer les books en tant que **resources** MCP, pour un accès par URI sans
-  passer par un appel d'outil.
 - `bookstack_create_shelf` : volontairement absent, les étagères étant une
   décision d'organisation qui gagne à rester manuelle. Trivial à ajouter si tu
   changes d'avis (`POST /api/shelves`, même corps que l'update).

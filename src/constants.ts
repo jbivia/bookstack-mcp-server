@@ -6,6 +6,15 @@ export const SERVER_VERSION = "1.0.0";
 /** Maximum characters returned by a single tool call before truncation kicks in. */
 export const CHARACTER_LIMIT = 25_000;
 
+/**
+ * Same ceiling for a resource read. Set higher than CHARACTER_LIMIT on purpose:
+ * a resource lands in the context because someone attached it or asked for it,
+ * whereas a tool result lands there as a side effect of the agent's own
+ * reasoning. The reader has already accepted the cost, so truncating a book
+ * mid-sentence serves nobody.
+ */
+export const RESOURCE_CHARACTER_LIMIT = 100_000;
+
 /** HTTP timeout for every call to the BookStack API. */
 export const REQUEST_TIMEOUT_MS = 30_000;
 

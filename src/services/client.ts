@@ -99,15 +99,18 @@ export interface RequestOptions {
 }
 
 /**
- * Perform an authenticated request against the BookStack API.
+ * Authenticate, send and check one request. Shared by every public helper so
+ * that auth, timeouts and error translation are defined exactly once.
  *
- * @param path API path starting with a slash, e.g. `/pages/12`.
+ * @param accept Value of the `Accept` header. Endpoints outside the JSON API
+ * need a different one; see apiRequestText.
  * @throws BookStackError with an actionable hint on any non-2xx response.
  */
-export async function apiRequest<T>(
+async function performRequest(
   path: string,
-  options: RequestOptions = {},
-): Promise<T> {
+  options: RequestOptions,
+  accept: string,
+): Promise<Response> {
   const config = loadConfig();
   const { method = "GET", query, body } = options;
 
@@ -120,7 +123,7 @@ export async function apiRequest<T>(
 
   const headers: Record<string, string> = {
     Authorization: `Token ${config.tokenId}:${config.tokenSecret}`,
-    Accept: "application/json",
+    Accept: accept,
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
@@ -139,6 +142,20 @@ export async function apiRequest<T>(
   if (!response.ok) {
     throw await translateHttpError(response);
   }
+  return response;
+}
+
+/**
+ * Perform an authenticated request against the BookStack JSON API.
+ *
+ * @param path API path starting with a slash, e.g. `/pages/12`.
+ * @throws BookStackError with an actionable hint on any non-2xx response.
+ */
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await performRequest(path, options, "application/json");
 
   if (response.status === 204) return undefined as T;
 
@@ -155,6 +172,18 @@ export async function apiRequest<T>(
         `or a reverse proxy returned an error page.`,
     );
   }
+}
+
+/**
+ * Same, for the endpoints that do not answer in JSON.
+ *
+ * The export routes (`/books/{id}/export/markdown`) return the file itself as
+ * `application/octet-stream`, so apiRequest would reject a perfectly good
+ * response for failing to parse as JSON.
+ */
+export async function apiRequestText(path: string): Promise<string> {
+  const response = await performRequest(path, {}, "*/*");
+  return response.text();
 }
 
 function translateNetworkError(error: unknown, url: URL): BookStackError {
