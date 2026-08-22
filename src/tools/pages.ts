@@ -14,7 +14,7 @@ import { apiRequest, BookStackError } from "../services/client.js";
 import { fetchList } from "../services/list.js";
 import { summarize, renderSummary, type EntitySummary } from "../services/entities.js";
 import { attachPageUrl } from "../services/links.js";
-import { startsWithTopHeading, withoutDuplicateTitle } from "../services/title.js";
+import { startsWithTopHeading, titlesMatch, withoutDuplicateTitle } from "../services/title.js";
 import { AUTHORING_CONVENTIONS, assertNoUnusableImages } from "../services/authoring.js";
 import {
   capListing,
@@ -234,12 +234,47 @@ const updatePageShape = {
     ),
   name: z.string().min(1).max(255).optional().describe("New title. Omit to keep the current one."),
   tags: tagsField,
+  book_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Move the page to this book, at its root. Mutually exclusive with chapter_id. " +
+        "Omit to leave the page where it is.",
+    ),
+  chapter_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Move the page into this chapter. Mutually exclusive with book_id. " +
+        "Omit to leave the page where it is.",
+    ),
   separator: z
     .string()
     .default("\n\n")
     .describe("Text inserted between old and new content in append/prepend mode."),
 };
 type UpdatePageArgs = z.infer<z.ZodObject<typeof updatePageShape>>;
+
+/* -------------------------------------------------------------------------- */
+/* bookstack_delete_page                                                       */
+/* -------------------------------------------------------------------------- */
+
+const deletePageShape = {
+  page_id: z.number().int().positive().describe("Id of the page to delete."),
+  confirm_title: z
+    .string()
+    .min(1)
+    .describe(
+      "The exact current title of the page, as a confirmation. The deletion only runs when it " +
+        "matches the page that page_id actually points at, so a wrong id fails instead of " +
+        "destroying something else. Read it with bookstack_get_page first.",
+    ),
+};
+type DeletePageArgs = z.infer<z.ZodObject<typeof deletePageShape>>;
 
 /* -------------------------------------------------------------------------- */
 /* Registration                                                                */
@@ -524,6 +559,8 @@ ${AUTHORING_CONVENTIONS}
 
 The title rule applies to replace and prepend mode, where the content lands at the top of the page; such a heading is stripped automatically. The image rule applies in every mode.
 
+This tool also moves a page: pass book_id to send it to the root of another book, or chapter_id to file it under a chapter. A move can be combined with a content change in the same call, or done on its own.
+
 Args:
   - page_id (number): id of the page to update
   - mode ('append' | 'prepend' | 'replace'): how to apply the content (default: 'append')
@@ -531,29 +568,42 @@ Args:
   - html (string): content to apply, in HTML (required for WYSIWYG-authored pages)
   - name (string): optional new title
   - tags (array): optional replacement tag set; omitting this leaves tags untouched
+  - book_id (number): optional destination book, moves the page to that book's root
+  - chapter_id (number): optional destination chapter; mutually exclusive with book_id
   - separator (string): text placed between old and new content (default: two newlines)
 
 Returns (json format):
   { "id": number, "name": string, "book_id": number, "chapter_id": number,
     "slug": string, "url": string, "updated_at": string, "mode": string,
-    "previous_length": number, "new_length": number }
+    "previous_length": number, "new_length": number,
+    "previous_book_id": number, "previous_chapter_id": number }   // only on a move
 
 Examples:
   - Use when: "add this fix to the existing Synology TLS page"
       -> page_id=31, markdown="### DNS-01 renewal\\n..."
   - Use when: "rewrite that page from scratch" -> mode="replace"
   - Use when: only retitling or retagging -> pass name and/or tags with no content
+  - Use when: "move page 31 into the Homelab book" -> page_id=31, book_id=7
+  - Use when: "file that page under the Synology chapter" -> page_id=31, chapter_id=12
+  - Don't use when: the page should go away entirely (use bookstack_delete_page)
 
 Error handling:
   - Appending markdown to a page with no markdown source returns an error telling you to
     resend the content as html; read the page first with bookstack_get_page to check.
-  - Passing both markdown and html returns an error naming the conflict.`,
+  - Passing both markdown and html returns an error naming the conflict.
+  - Passing both book_id and chapter_id returns an error: a page has one home, so name it
+    unambiguously. Moving a page changes its URL, since the book slug is part of it.`,
       inputSchema: updatePageShape,
       outputSchema: {
         ...pageSummaryShape,
         mode: z.string(),
         previous_length: z.number().optional(),
         new_length: z.number().optional(),
+        previous_book_id: z.number().optional().describe("Book the page was in, when it was moved."),
+        previous_chapter_id: z
+          .number()
+          .optional()
+          .describe("Chapter the page was in, when it was moved out of one."),
       },
       annotations: {
         readOnlyHint: false,
@@ -565,18 +615,38 @@ Error handling:
     async (args: UpdatePageArgs) => {
       try {
         const incoming = resolveContent(args.markdown, args.html, false);
+        const moving = args.book_id !== undefined || args.chapter_id !== undefined;
 
-        if (!incoming && args.name === undefined && args.tags === undefined) {
+        if (args.book_id !== undefined && args.chapter_id !== undefined) {
+          throw new BookStackError(
+            "Both book_id and chapter_id were provided.",
+            undefined,
+            "A page lives in exactly one place: pass book_id to move it to a book's root, " +
+              "or chapter_id to file it under a chapter.",
+          );
+        }
+
+        if (!incoming && args.name === undefined && args.tags === undefined && !moving) {
           throw new BookStackError(
             "Nothing to update.",
             undefined,
-            "Provide markdown or html content, or a new name, or a tags array.",
+            "Provide markdown or html content, a new name, a tags array, or a book_id or " +
+              "chapter_id to move the page.",
           );
         }
+
+        // Several branches below need the page as it stands: merging an append,
+        // comparing a leading heading against the title, recording where a move
+        // started. Read at most once, and only when a branch actually asks.
+        let current: BookStackPage | undefined;
+        const readCurrent = async (): Promise<BookStackPage> =>
+          (current ??= await apiRequest<BookStackPage>(`/pages/${args.page_id}`));
 
         const body: Record<string, unknown> = {};
         if (args.name !== undefined) body["name"] = args.name;
         if (args.tags !== undefined) body["tags"] = args.tags;
+        if (args.book_id !== undefined) body["book_id"] = args.book_id;
+        if (args.chapter_id !== undefined) body["chapter_id"] = args.chapter_id;
 
         let previousLength: number | undefined;
         let newLength: number | undefined;
@@ -587,20 +657,17 @@ Error handling:
             // The title is needed only to compare against a leading heading, so
             // the page is fetched only when there is one to compare.
             const title =
-              args.name ??
-              (startsWithTopHeading(incoming)
-                ? (await apiRequest<BookStackPage>(`/pages/${args.page_id}`)).name
-                : undefined);
+              args.name ?? (startsWithTopHeading(incoming) ? (await readCurrent()).name : undefined);
             const cleaned = withoutDuplicateTitle(incoming, title);
             stripped = cleaned.stripped;
             Object.assign(body, cleaned.content);
             newLength = Object.values(cleaned.content)[0]?.length ?? 0;
           } else {
-            const current = await apiRequest<BookStackPage>(`/pages/${args.page_id}`);
+            const page = await readCurrent();
             const isMarkdown = "markdown" in incoming;
-            const existing = isMarkdown ? (current.markdown ?? "") : (current.html ?? "");
+            const existing = isMarkdown ? (page.markdown ?? "") : (page.html ?? "");
 
-            if (isMarkdown && existing.trim() === "" && (current.html ?? "").trim() !== "") {
+            if (isMarkdown && existing.trim() === "" && (page.html ?? "").trim() !== "") {
               throw new BookStackError(
                 `Page ${args.page_id} has no markdown source, so markdown cannot be appended to it.`,
                 undefined,
@@ -614,7 +681,7 @@ Error handling:
             // repeating the title would double up with the one BookStack draws.
             const applied =
               args.mode === "prepend"
-                ? withoutDuplicateTitle(incoming, args.name ?? current.name)
+                ? withoutDuplicateTitle(incoming, args.name ?? page.name)
                 : { content: incoming, stripped: false };
             stripped = applied.stripped;
 
@@ -636,6 +703,9 @@ Error handling:
           }
         }
 
+        // Read before the write, so the origin of a move is the real one.
+        const before = moving ? await readCurrent() : undefined;
+
         const updated = await apiRequest<BookStackPage>(`/pages/${args.page_id}`, {
           method: "PUT",
           body,
@@ -647,6 +717,8 @@ Error handling:
           mode: args.mode,
           ...(previousLength !== undefined ? { previous_length: previousLength } : {}),
           ...(newLength !== undefined ? { new_length: newLength } : {}),
+          ...(before ? { previous_book_id: before.book_id } : {}),
+          ...(before?.chapter_id ? { previous_chapter_id: before.chapter_id } : {}),
         };
 
         const change =
@@ -654,11 +726,107 @@ Error handling:
             ? ` Body went from ${previousLength} to ${newLength} characters.`
             : "";
 
+        // A move within one book is reported on its own: repeating the same book
+        // id on both sides reads like a mistake. Only a change of book alters the
+        // page URL, since the book slug is in it and the chapter is not.
+        const from = `was ${before?.chapter_id ? `in chapter ${before.chapter_id}` : "at the book root"}`;
+        const move = !before
+          ? ""
+          : before.book_id !== summary.book_id
+            ? `\nMoved from book ${before.book_id} to book ${summary.book_id}` +
+              `${summary.chapter_id ? `, chapter ${summary.chapter_id}` : ""} (${from}).` +
+              ` The new book changed the page's URL, so links noted earlier are stale.`
+            : `\nMoved ${summary.chapter_id ? `into chapter ${summary.chapter_id}` : `to the root of book ${summary.book_id}`}` +
+              ` (${from}).`;
+
         return toolSuccess(
           `Updated page "${summary.name}" (page_id: ${summary.id}) using mode="${args.mode}".${change}` +
+            `${move}` +
             `${summary.url ? `\nURL: ${summary.url}` : ""}` +
             `${stripped ? `\n${TITLE_STRIPPED_NOTICE}` : ""}`,
           structured,
+        );
+      } catch (error) {
+        return toolFailure(error);
+      }
+    },
+  );
+  server.registerTool(
+    "bookstack_delete_page",
+    {
+      title: "Delete a BookStack page",
+      description: `Send one page to the BookStack recycle bin.
+
+This is the only deletion this server performs: books, chapters and shelves cannot be deleted through it, because removing a container takes everything inside it with it. Deleting a page is reversible — BookStack keeps it in the recycle bin, from where a human restores it in the web interface — but this server offers no way to restore it, so treat the call as final.
+
+The page is read before it is deleted and confirm_title must match its current title. A page_id that points somewhere unexpected therefore fails harmlessly instead of deleting the wrong page. The comparison ignores case, surrounding whitespace and markdown emphasis.
+
+Args:
+  - page_id (number): id of the page to delete
+  - confirm_title (string): the page's exact current title
+
+Returns (json format):
+  { "id": number, "name": string, "book_id": number, "chapter_id": number,
+    "deleted": true, "recoverable": true }
+
+Examples:
+  - Use when: "delete the obsolete WireGuard draft" -> read it with bookstack_get_page,
+    then page_id=31, confirm_title="WireGuard draft"
+  - Don't use when: the page just needs rewriting (use bookstack_update_page with mode="replace")
+  - Don't use when: the page is in the wrong book (use bookstack_update_page with book_id)
+
+Error handling:
+  - A mismatch between confirm_title and the real title returns an error naming the actual
+    title, and nothing is deleted.
+  - A 404 means no page carries that id, or it was already deleted.`,
+      inputSchema: deletePageShape,
+      outputSchema: {
+        id: z.number(),
+        name: z.string(),
+        book_id: z.number(),
+        chapter_id: z.number().optional(),
+        deleted: z.boolean().describe("Always true; a failure is reported as an error instead."),
+        recoverable: z
+          .boolean()
+          .describe("Whether the page can still be restored from the BookStack recycle bin."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        // A second call 404s rather than being a no-op, so this is not idempotent.
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args: DeletePageArgs) => {
+      try {
+        // Doubles as an existence check: a bad id fails here, before any write.
+        const page = await apiRequest<BookStackPage>(`/pages/${args.page_id}`);
+
+        if (!titlesMatch(page.name, args.confirm_title)) {
+          throw new BookStackError(
+            `Page ${args.page_id} is titled "${page.name}", not "${args.confirm_title}". Nothing was deleted.`,
+            undefined,
+            `Confirm the id with bookstack_get_page or bookstack_search, then retry with the ` +
+              `title the page actually carries.`,
+          );
+        }
+
+        await apiRequest<void>(`/pages/${args.page_id}`, { method: "DELETE" });
+
+        return toolSuccess(
+          `Deleted page "${page.name}" (page_id: ${page.id}) from book ${page.book_id}` +
+            `${page.chapter_id ? `, chapter ${page.chapter_id}` : ""}.\n` +
+            `It is in the BookStack recycle bin and can be restored from the web interface ` +
+            `(Settings > Recycle Bin); this server cannot restore it.`,
+          {
+            id: page.id,
+            name: page.name,
+            book_id: page.book_id,
+            ...(page.chapter_id ? { chapter_id: page.chapter_id } : {}),
+            deleted: true,
+            recoverable: true,
+          },
         );
       } catch (error) {
         return toolFailure(error);

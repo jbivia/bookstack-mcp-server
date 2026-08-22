@@ -8,6 +8,9 @@
  *
  * Only a leading heading that matches the title is removed, and only the first
  * one: a body whose opening heading says something else is left untouched.
+ *
+ * The same folding rule is exposed as `titlesMatch`, used to confirm a title a
+ * caller typed back before a destructive operation runs on it.
  */
 
 /** Fold a heading and a title to a form where cosmetic differences don't matter. */
@@ -20,6 +23,16 @@ function normalize(value: string): string {
     .replace(/[.:;!?]+$/, "")
     .trim()
     .toLowerCase();
+}
+
+/**
+ * True when two titles are the same once cosmetic differences are folded away.
+ *
+ * Case, surrounding whitespace, markdown emphasis and trailing punctuation are
+ * ignored, so a caller retyping a title need not reproduce it byte for byte.
+ */
+export function titlesMatch(a: string, b: string): boolean {
+  return normalize(a) === normalize(b);
 }
 
 /** True when `content` opens with a level-1 heading, whatever its text. */

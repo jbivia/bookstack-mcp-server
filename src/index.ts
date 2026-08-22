@@ -3,10 +3,14 @@
  * MCP server for a self-hosted BookStack wiki.
  *
  * Exposes read tools (search, browse, read pages) and authoring tools (create
- * books, chapters and pages; rename or re-describe a book; append to or rewrite
- * existing pages), plus books as resources for URI access without a tool call.
- * Deletion is deliberately not implemented: removing wiki content stays a human
- * action.
+ * books, chapters and pages; rename or re-describe a book or a chapter; append
+ * to, rewrite or move existing pages), plus books as resources for URI access
+ * without a tool call.
+ *
+ * Deletion is limited to a single page at a time, confirmed by its title and
+ * sent to the BookStack recycle bin. Books, chapters and shelves cannot be
+ * deleted here: removing a container takes everything inside it with it, so that
+ * stays a human action in the web interface.
  *
  * Transport: stdio. Nothing may be written to stdout except protocol traffic,
  * so all logging goes to stderr.
