@@ -63,6 +63,17 @@ export async function buildPageUrl(
   return webLink(`books/${slug}/page/${pageSlug}`);
 }
 
+/** Build the browsable URL of a chapter, or undefined when it cannot be resolved. */
+export async function buildChapterUrl(
+  bookId: number,
+  chapterSlug: string | undefined,
+): Promise<string | undefined> {
+  if (!chapterSlug) return undefined;
+  const slug = await resolveBookSlug(bookId);
+  if (!slug) return undefined;
+  return webLink(`books/${slug}/chapter/${chapterSlug}`);
+}
+
 /**
  * Add a `url` to a page summary when one is not already present.
  *

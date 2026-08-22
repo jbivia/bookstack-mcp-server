@@ -9,6 +9,7 @@ import { z } from "zod";
 import { apiRequest } from "../services/client.js";
 import { fetchList } from "../services/list.js";
 import { summarize, renderSummary, type EntitySummary } from "../services/entities.js";
+import { buildChapterUrl } from "../services/links.js";
 import {
   capListing,
   line,
@@ -48,6 +49,19 @@ function toChapterSummary(chapter: BookStackChapter): ChapterSummary {
   };
 }
 
+/**
+ * Add a `url` to a chapter summary when the API did not supply one.
+ *
+ * BookStack omits `url` on create and update responses, and a chapter link needs
+ * the book slug, which only a second request resolves. Single-chapter operations
+ * pay that cost; listings deliberately do not.
+ */
+async function withChapterUrl(summary: ChapterSummary): Promise<ChapterSummary> {
+  if (summary.url) return summary;
+  const url = await buildChapterUrl(summary.book_id, summary.slug);
+  return url ? { ...summary, url } : summary;
+}
+
 function render(payload: Paginated<ChapterSummary>): string {
   const header = `# Chapters\n\n${payload.total} total, showing ${payload.count}.\n`;
   const blocks = payload.items.map((item) =>
@@ -80,6 +94,26 @@ const createChapterShape = {
   tags: tagsField,
 };
 type CreateChapterArgs = z.infer<z.ZodObject<typeof createChapterShape>>;
+
+const updateChapterShape = {
+  chapter_id: z.number().int().positive().describe("Id of the chapter to update."),
+  name: z.string().min(1).max(255).optional().describe("New name. Omit to keep the current one."),
+  description: z
+    .string()
+    .max(1900)
+    .optional()
+    .describe("New plain-text description, replacing the previous one. An empty string clears it."),
+  tags: tagsField,
+  book_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Move the chapter, with every page it holds, into this book. Omit to leave it where it is.",
+    ),
+};
+type UpdateChapterArgs = z.infer<z.ZodObject<typeof updateChapterShape>>;
 
 export function registerChapterTools(server: McpServer): void {
   server.registerTool(
@@ -195,11 +229,110 @@ Error handling:
             ...(args.tags ? { tags: args.tags } : {}),
           },
         });
-        const summary = toChapterSummary(created);
+        const summary = await withChapterUrl(toChapterSummary(created));
         return toolSuccess(
           `Created chapter "${summary.name}" (chapter_id: ${summary.id}) in book ${summary.book_id}.\n` +
-            `Add pages with bookstack_create_page using chapter_id=${summary.id}.`,
+            `Add pages with bookstack_create_page using chapter_id=${summary.id}.` +
+            `${summary.url ? `\nURL: ${summary.url}` : ""}`,
           summary,
+        );
+      } catch (error) {
+        return toolFailure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "bookstack_update_chapter",
+    {
+      title: "Update a BookStack chapter",
+      description: `Change a chapter's name, description or tags, or move it to another book.
+
+Metadata only: this never touches the pages inside the chapter, except that moving the chapter carries them along into the destination book. Each field is a whole-value replacement — the description you send replaces the previous one, and sending tags replaces the entire tag set, so read the chapter first with bookstack_list_chapters or bookstack_get_book when you mean to keep what is already there. Renaming a chapter changes its slug, and therefore its URL.
+
+Args:
+  - chapter_id (number): id of the chapter to update
+  - name (string): optional new name, 1-255 characters
+  - description (string): optional new description, up to 1900 characters; an empty string clears it
+  - tags (array): optional replacement tag set [{ "name": string, "value": string }]; omit to leave tags untouched
+  - book_id (number): optional destination book, moves the chapter and its pages there
+
+Returns (json format):
+  {
+    "id": number, "name": string, "book_id": number, "slug": string,
+    "description": string, "updated_at": string, "tags": string, "url": string,
+    "changed": string[]   // what this call changed, e.g. ["renamed", "moved to book 7"]
+  }
+
+Examples:
+  - Use when: "rename chapter 12 to Synology" -> chapter_id=12, name="Synology"
+  - Use when: "that chapter belongs in the Homelab book" -> chapter_id=12, book_id=7
+  - Don't use when: moving a single page (use bookstack_update_page with chapter_id)
+  - Don't use when: changing the text of a page (use bookstack_update_page)
+
+Error handling:
+  - Returns an error when nothing was supplied to change.
+  - A 404 means no chapter carries that id, or the destination book_id does not exist;
+    confirm with bookstack_list_chapters and bookstack_list_books.
+  - A 422 usually means the description exceeded 1900 characters, or the name was empty.`,
+      inputSchema: updateChapterShape,
+      outputSchema: {
+        ...chapterSummaryShape,
+        changed: z
+          .array(z.string())
+          .describe("What this call changed, e.g. ['renamed', 'moved to book 7']."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args: UpdateChapterArgs) => {
+      try {
+        if (
+          args.name === undefined &&
+          args.description === undefined &&
+          args.tags === undefined &&
+          args.book_id === undefined
+        ) {
+          return toolFailure(
+            new Error(
+              "Nothing to update. Provide a new name, description, tags array, or a book_id to move the chapter.",
+            ),
+          );
+        }
+
+        const body: Record<string, unknown> = {};
+        if (args.name !== undefined) body["name"] = args.name;
+        if (args.description !== undefined) body["description"] = args.description;
+        if (args.tags !== undefined) body["tags"] = args.tags;
+        if (args.book_id !== undefined) body["book_id"] = args.book_id;
+
+        const updated = await apiRequest<BookStackChapter>(`/chapters/${args.chapter_id}`, {
+          method: "PUT",
+          body,
+        });
+        const summary = await withChapterUrl(toChapterSummary(updated));
+
+        // Never empty: the guard above rejects a call that changes nothing.
+        const changed: string[] = [];
+        if (args.name !== undefined) changed.push("renamed");
+        if (args.description !== undefined) {
+          changed.push(args.description === "" ? "description cleared" : "description updated");
+        }
+        if (args.tags !== undefined) {
+          changed.push(args.tags.length === 0 ? "tags cleared" : "tags replaced");
+        }
+        if (args.book_id !== undefined) changed.push(`moved to book ${summary.book_id}`);
+
+        return toolSuccess(
+          `Updated chapter "${summary.name}" (chapter_id: ${summary.id}): ${changed.join(", ")}.` +
+            `${args.name !== undefined ? "\nThe rename changed the chapter's slug, so URLs noted earlier for it are stale." : ""}` +
+            `${args.book_id !== undefined ? "\nThe pages it holds moved with it, and their URLs changed with the book." : ""}` +
+            `${summary.url ? `\nURL: ${summary.url}` : ""}`,
+          { ...summary, changed },
         );
       } catch (error) {
         return toolFailure(error);

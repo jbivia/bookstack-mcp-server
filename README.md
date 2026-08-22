@@ -5,8 +5,11 @@ Il permet à un agent de chercher dans le wiki, de lire des pages, et d'y écrir
 la documentation — typiquement pour capturer les conclusions d'une session de
 travail sans quitter la conversation.
 
-**La suppression n'est volontairement pas implémentée.** Supprimer du contenu
-reste une action humaine, faite depuis l'interface web.
+**Seule la suppression de page est autorisée**, et uniquement page par page,
+confirmée par son titre et envoyée à la corbeille BookStack. Les books, les
+chapitres et les étagères **ne peuvent pas être supprimés** depuis ce serveur :
+supprimer un conteneur emporte tout ce qu'il contient, ça reste une action
+humaine faite depuis l'interface web.
 
 ---
 
@@ -137,8 +140,10 @@ npm run inspect
 | `bookstack_create_chapter` | oui | Créer un chapitre |
 | `bookstack_create_page` | oui | Créer une page |
 | `bookstack_update_book` | oui | Renommer un book, changer sa description ou ses tags |
-| `bookstack_update_page` | oui | Ajouter à / réécrire une page (`append` par défaut) |
+| `bookstack_update_chapter` | oui | Renommer un chapitre, changer description/tags, le déplacer |
+| `bookstack_update_page` | oui | Ajouter à / réécrire une page (`append` par défaut), ou la déplacer |
 | `bookstack_update_shelf` | oui | Rattacher/détacher des books, renommer (`add` par défaut) |
+| `bookstack_delete_page` | oui | **Supprimer une page** (corbeille, titre à confirmer) |
 | `bookstack_save_note` | oui | **Workflow** : capturer une note en un appel, par nom |
 
 ### `bookstack_save_note`
@@ -148,6 +153,37 @@ résout le book (et le chapitre) **par nom**, les crée si besoin, puis crée la
 page ou **ajoute une section** à la page existante portant ce titre. Aucun
 contenu n'est jamais écrasé : rappeler l'outil avec le même titre empile les
 sections sur une seule page.
+
+### Suppression : page seulement, corbeille, titre à confirmer
+
+`bookstack_delete_page` est **le seul outil de suppression** du serveur. Il n'y a
+pas d'équivalent pour les books, les chapitres ou les étagères, et il n'est pas
+prévu d'en ajouter : supprimer un book emporterait tous ses chapitres et toutes
+ses pages, ce qui n'est pas une décision à confier à un agent.
+
+Deux garde-fous :
+
+- **Corbeille, pas destruction.** `DELETE /api/pages/{id}` envoie la page dans la
+  corbeille BookStack ; elle reste restaurable depuis **Settings → Recycle Bin**
+  de l'interface web. Le serveur n'expose pas `/api/recycle-bin` : il ne peut ni
+  vider la corbeille, ni restaurer une page.
+- **Confirmation par le titre.** L'outil exige un `confirm_title` qui doit
+  correspondre au titre réel de la page. La page est lue avant toute suppression
+  et, en cas d'écart, l'erreur donne le vrai titre sans rien supprimer — un
+  `page_id` inventé échoue au lieu d'effacer autre chose. La comparaison ignore la
+  casse, les espaces et l'emphase markdown : inutile de recopier au caractère près.
+
+### Déplacer une page ou un chapitre
+
+`bookstack_update_page` accepte `book_id` (déplace la page à la racine du book)
+ou `chapter_id` (la range dans un chapitre) — **les deux à la fois sont
+refusés** : une page n'a qu'un seul emplacement, l'ambiguïté doit échouer plutôt
+que d'être tranchée en silence. Le déplacement se combine avec une écriture de
+contenu dans le même appel, et la réponse rappelle d'où venait la page.
+
+`bookstack_update_chapter` déplace de même un chapitre vers un autre book, avec
+toutes ses pages. Changer de book change le slug dans l'URL : les liens notés
+avant le déplacement sont périmés, la réponse le signale.
 
 ### Étagères : le piège du remplacement
 
@@ -325,8 +361,8 @@ du 2020-12 nativement.
 - `bookstack_create_shelf` : volontairement absent, les étagères étant une
   décision d'organisation qui gagne à rester manuelle. Trivial à ajouter si tu
   changes d'avis (`POST /api/shelves`, même corps que l'update).
-- Suppression via la corbeille (`/api/recycle-bin`) si tu changes d'avis, avec
-  `destructiveHint: true`.
+- Restauration depuis la corbeille (`/api/recycle-bin`) : aujourd'hui une page
+  supprimée ne se récupère que depuis l'interface web.
 
 ## Licence
 
