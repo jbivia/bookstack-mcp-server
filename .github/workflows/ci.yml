@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 = minimum supported (package.json engines), 26 = current release
+        node: ['24', '26']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Smoke test (the built server loads and exits cleanly)
+        run: |
+          set +e
+          output=$(node dist/index.js --check 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::--check succeeded without BookStack credentials"
+            exit 1
+          fi
+          case "$output" in
+            *"Missing required environment variable"*) ;;
+            *) echo "::error::unexpected failure, the module graph may be broken"; exit 1 ;;
+          esac
