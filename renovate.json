@@ -1,3 +1,36 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json"
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Paris",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Laisser une version se stabiliser avant de la proposer",
+      "matchManagers": ["npm"],
+      "minimumReleaseAge": "5 days"
+    },
+    {
+      "description": "Regrouper les mises a jour non-majeures des devDependencies",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "devDependencies (non-major)"
+    },
+    {
+      "description": "Regrouper les mises a jour des actions GitHub",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "@types/node doit rester aligne sur engines.node (>=24)",
+      "matchPackageNames": ["@types/node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
 }
