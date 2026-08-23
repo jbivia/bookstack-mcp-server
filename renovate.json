@@ -1,19 +1,35 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": ["config:recommended", ":semanticCommits"],
   "timezone": "Europe/Paris",
   "schedule": ["before 7am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "configMigration": true,
+  "description": [
+    "L'automerge natif de GitHub est desactive sur ce depot (allow_auto_merge",
+    "a false) : platformAutomerge=false demande donc a Renovate de fusionner",
+    "lui-meme, une fois la CI constatee verte."
+  ],
+  "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 7am on the first day of the month"]
   },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"],
+    "schedule": [],
+    "minimumReleaseAge": null
+  },
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "Laisser une version se stabiliser avant de la proposer",
+      "description": "Laisser une version se stabiliser avant de la proposer : une release publiee depuis moins de cinq jours peut encore etre depubliee ou corrigee. internalChecksFilter empeche Renovate de la proposer quand meme.",
       "matchManagers": ["npm"],
-      "minimumReleaseAge": "5 days"
+      "minimumReleaseAge": "5 days",
+      "internalChecksFilter": "strict"
     },
     {
       "description": "Regrouper les mises a jour non-majeures des devDependencies",
@@ -22,9 +38,24 @@
       "groupName": "devDependencies (non-major)"
     },
     {
-      "description": "Regrouper les mises a jour des actions GitHub",
+      "description": "Les patchs de devDependencies ne changent rien au code livre : fusion automatique une fois la CI verte, qui type-check et construit le serveur.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Regrouper et fusionner automatiquement les actions GitHub non-majeures. matchDepTypes restreint le lot aux `uses:` : le manager github-actions extrait aussi les images des blocs `services:`.",
       "matchManagers": ["github-actions"],
-      "groupName": "github-actions"
+      "matchDepTypes": ["action"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "github-actions",
+      "automerge": true
+    },
+    {
+      "description": "Une majeure reste seule, avec son changelog et sa relecture : c'est le seul type de mise a jour qui peut demander un changement de code.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major"]
     },
     {
       "description": "@types/node doit rester aligne sur engines.node (>=24)",
