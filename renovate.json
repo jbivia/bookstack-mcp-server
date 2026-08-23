@@ -21,7 +21,9 @@
     "enabled": true,
     "labels": ["dependencies", "security"],
     "schedule": [],
-    "minimumReleaseAge": null
+    "minimumReleaseAge": null,
+    "prConcurrentLimit": 0,
+    "prHourlyLimit": 0
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [
