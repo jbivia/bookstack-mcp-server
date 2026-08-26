@@ -211,7 +211,7 @@ Error handling:
       inputSchema: getBookShape,
       outputSchema: {
         ...describedSummaryShape,
-        contents: z.array(z.record(z.unknown())).describe("Ordered chapter/page tree."),
+        contents: z.array(z.record(z.string(), z.unknown())).describe("Ordered chapter/page tree."),
       },
       annotations: {
         readOnlyHint: true,
