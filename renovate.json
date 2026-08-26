@@ -7,18 +7,17 @@
     "l'avant 7h. L'instance self-hosted ne passe qu'une fois par jour, vers midi",
     "heure de Paris ; une fenetre qui ne recouvre pas l'heure du passage ne se",
     "declenche jamais et tout reste en 'Awaiting Schedule' au dependency dashboard,",
-    "sans la moindre erreur nulle part."
+    "sans la moindre erreur nulle part.",
+    "",
+    "L'automerge natif de GitHub est desactive sur ce depot (allow_auto_merge",
+    "a false) : platformAutomerge=false demande donc a Renovate de fusionner",
+    "lui-meme, une fois la CI constatee verte."
   ],
   "schedule": ["on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
   "configMigration": true,
-  "description": [
-    "L'automerge natif de GitHub est desactive sur ce depot (allow_auto_merge",
-    "a false) : platformAutomerge=false demande donc a Renovate de fusionner",
-    "lui-meme, une fois la CI constatee verte."
-  ],
   "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
