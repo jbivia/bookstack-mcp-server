@@ -2,7 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":semanticCommits"],
   "timezone": "Europe/Paris",
-  "schedule": ["before 7am on monday"],
+  "description": [
+    "Fenetre volontairement large : elle couvre le lundi entier, pas seulement",
+    "l'avant 7h. L'instance self-hosted ne passe qu'une fois par jour, vers midi",
+    "heure de Paris ; une fenetre qui ne recouvre pas l'heure du passage ne se",
+    "declenche jamais et tout reste en 'Awaiting Schedule' au dependency dashboard,",
+    "sans la moindre erreur nulle part."
+  ],
+  "schedule": ["on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
@@ -15,7 +22,7 @@
   "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 7am on the first day of the month"]
+    "schedule": ["on the first day of the month"]
   },
   "vulnerabilityAlerts": {
     "enabled": true,
